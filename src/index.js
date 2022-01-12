@@ -43,6 +43,14 @@ const typeDefs = gql`
     deleteProject(_id: String!): Boolean!
 
     addUserToProject(projectId: String!, userId: String!): Project!
+
+    createTaskList(content: String!, projectId: String!): TaskList!
+    updateTaskList(
+      _id: String!
+      content: String
+      isCompleted: Boolean
+    ): TaskList!
+    deleteTaskList(_id: String!): Boolean!
   }
 
   input SignUpInput {
@@ -85,7 +93,7 @@ const typeDefs = gql`
     content: String!
     isCompleted: Boolean!
 
-    projectId: Project
+    project: Project!
   }
 `;
 
@@ -166,7 +174,7 @@ const resolvers = {
         title,
         createdAt: new Date().toISOString(),
         userIds: [user._id],
-        progress: 0,
+        progress,
       };
 
       const result = await db.collection("Projects").insertOne(newProject);
@@ -218,14 +226,79 @@ const resolvers = {
         .collection("Projects")
         .findOne({ _id: ObjectId(projectId) });
     },
+
+    createTaskList: async (_, { content, projectId }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      const newTaskList = {
+        content,
+        projectId: ObjectId(projectId),
+        isCompleted: false,
+      };
+
+      const result = await db.collection("TaskLists").insertOne(newTaskList);
+      console.log(newTaskList);
+      return newTaskList;
+    },
+
+    updateTaskList: async (_, { _id, content, isCompleted }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("TaskLists").updateOne(
+        { _id: ObjectId(_id) },
+        {
+          $set: {
+            content,
+            isCompleted,
+          },
+        }
+      );
+
+      return await db.collection("TaskLists").findOne({ _id: ObjectId(_id) });
+    },
+
+    deleteTaskList: async (_, { _id }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("TaskLists").deleteOne({ _id: ObjectId(_id) });
+      return true;
+    },
   },
 
   Project: {
-    progress: () => 0.0,
+    progress: async ({ _id }, _, { db }) => {
+      const taskLists = await db
+        .collection("TaskLists")
+        .find({ projectId: ObjectId(_id) })
+        .toArray();
+      const completed = taskLists.filter((taskList) => taskList.isCompleted);
+
+      if (taskLists.length === 0) {
+        return 0;
+      }
+
+      return (100 * completed.length) / taskLists.length;
+    },
     users: async ({ userIds }, _, { db }) =>
       Promise.all(
         userIds.map((userId) => db.collection("Users").findOne({ _id: userId }))
       ),
+    taskLists: async ({ _id }, _, { db }) =>
+      await db
+        .collection("TaskLists")
+        .find({ projectId: ObjectId(_id) })
+        .toArray(),
+  },
+
+  TaskList: {
+    project: async ({ projectId }, _, { db }) =>
+      db.collection("Projects").findOne({ _id: projectId }),
   },
 };
 
