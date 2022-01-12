@@ -1,11 +1,28 @@
 const { ApolloServer, gql } = require("apollo-server");
 const dotenv = require("dotenv");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 dotenv.config();
 
-const { DB_URI, DB_NAME } = process.env;
+const { DB_URI, DB_NAME, JWT_SECRET } = process.env;
+
+const getToken = (user) =>
+  jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7 days" });
+
+const getUserFromToken = async (token, db) => {
+  if (!token) {
+    return null;
+  }
+
+  const tokenData = jwt.verify(token, JWT_SECRET);
+  console.log(tokenData, "token id");
+  if (!tokenData?.id) {
+    return null;
+  }
+  return await db.collection("Users").findOne({ _id: ObjectId(tokenData.id) });
+};
 
 // A schema is a collection of type definitions (hence "typeDefs")
 // that together define the "shape" of queries that are executed against
@@ -85,18 +102,18 @@ const resolvers = {
       try {
         result = await db.collection("Users").insertOne(user);
       } finally {
-        //console.log(result.insertedId);
+        console.log(result.insertedId);
       }
 
       return {
         user,
-        token: "token",
+        token: getToken(user),
       };
     },
 
     signIn: async (_, { input }, { db }) => {
       const user = await db.collection("Users").findOne({ email: input.email });
-      console.log(user);
+      //console.log(user);
 
       if (!user) {
         throw new Error("Invalid Credentials");
@@ -112,7 +129,7 @@ const resolvers = {
       }
       return {
         user,
-        token: "token",
+        token: getToken(user),
       };
     },
   },
@@ -129,20 +146,31 @@ const start = async () => {
   try {
     //client.connect();
     client.connect((err) => {});
-    const db = client.db("TaskBri");
+    const db = client.db(DB_NAME);
 
-    const context = {
-      db,
-    };
+    // const context = {
+    //   db,
+    // };
 
-    const server = new ApolloServer({ typeDefs, resolvers, context });
+    const server = new ApolloServer({
+      typeDefs,
+      resolvers,
+      context: async ({ req }) => {
+        const user = await getUserFromToken(req.headers.authorization, db);
+        //console.log(user, "here");
+        return {
+          db,
+          user,
+        };
+      },
+    });
 
     // The `listen` method launches a web server.
     server.listen().then(({ url }) => {
       console.log(`🚀  Server ready at ${url}`);
     });
   } finally {
-    await client.close();
+    //await client.close();
   }
 };
 
