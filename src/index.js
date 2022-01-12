@@ -17,7 +17,7 @@ const getUserFromToken = async (token, db) => {
   }
 
   const tokenData = jwt.verify(token, JWT_SECRET);
-  console.log(tokenData, "token id");
+
   if (!tokenData?.id) {
     return null;
   }
@@ -34,8 +34,10 @@ const typeDefs = gql`
   }
 
   type Mutation {
-    signUp(input: SignUpInput): AuthUser!
-    signIn(input: SignInInput): AuthUser!
+    signUp(input: SignUpInput!): AuthUser!
+    signIn(input: SignInInput!): AuthUser!
+
+    createProject(title: String!): Project!
   }
 
   input SignUpInput {
@@ -67,10 +69,9 @@ const typeDefs = gql`
     _id: ID!
     createdAt: String!
     title: String!
-    progress: Float!
+    progress: Float
 
     users: [User!]!
-    taskLists: [TaskList!]!
   }
 
   type TaskList {
@@ -131,6 +132,22 @@ const resolvers = {
         user,
         token: getToken(user),
       };
+    },
+
+    createProject: async (_, { title }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+      console.log(user._id);
+      const newProject = {
+        title,
+        createdAt: new Date().toISOString(),
+        users: [user],
+      };
+
+      const result = await db.collection("Projects").insertOne(newProject);
+      console.log(newProject);
+      return newProject;
     },
   },
 };
