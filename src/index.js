@@ -31,6 +31,7 @@ const getUserFromToken = async (token, db) => {
 const typeDefs = gql`
   type Query {
     myProjects: [Project!]!
+    getProject(_id: String!): Project
   }
 
   type Mutation {
@@ -38,6 +39,10 @@ const typeDefs = gql`
     signIn(input: SignInInput!): AuthUser!
 
     createProject(title: String!): Project!
+    updateProject(_id: String!, title: String!): Project!
+    deleteProject(_id: String!): Boolean!
+
+    addUserToProject(projectId: String!, userId: String!): Project!
   }
 
   input SignUpInput {
@@ -69,9 +74,10 @@ const typeDefs = gql`
     _id: ID!
     createdAt: String!
     title: String!
-    progress: Float
+    progress: Float!
 
     users: [User!]!
+    taskLists: [TaskList!]!
   }
 
   type TaskList {
@@ -87,7 +93,24 @@ const typeDefs = gql`
 // schema. This resolver retrieves books from the "books" array above.
 const resolvers = {
   Query: {
-    myProjects: () => [],
+    myProjects: async (_, __, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      return await db
+        .collection("Projects")
+        .find({ userIds: user._id })
+        .toArray();
+    },
+
+    getProject: async (_, { _id }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      return await db.collection("Projects").findOne({ _id: ObjectId(_id) });
+    },
   },
   Mutation: {
     signUp: async (_, { input }, { db }) => {
@@ -142,13 +165,67 @@ const resolvers = {
       const newProject = {
         title,
         createdAt: new Date().toISOString(),
-        users: [user],
+        userIds: [user._id],
+        progress: 0,
       };
 
       const result = await db.collection("Projects").insertOne(newProject);
       console.log(newProject);
       return newProject;
     },
+
+    updateProject: async (_, { _id, title }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("Projects").updateOne(
+        { _id: ObjectId(_id) },
+        {
+          $set: {
+            title,
+          },
+        }
+      );
+
+      return await db.collection("Projects").findOne({ _id: ObjectId(_id) });
+    },
+
+    deleteProject: async (_, { _id }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("Projects").deleteOne({ _id: ObjectId(_id) });
+      return true;
+    },
+
+    addUserToProject: async (_, { projectId, userId }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("Projects").updateOne(
+        { _id: ObjectId(projectId) },
+        {
+          $push: {
+            userIds: ObjectId(userId),
+          },
+        }
+      );
+
+      return await db
+        .collection("Projects")
+        .findOne({ _id: ObjectId(projectId) });
+    },
+  },
+
+  Project: {
+    progress: () => 0.0,
+    users: async ({ userIds }, _, { db }) =>
+      Promise.all(
+        userIds.map((userId) => db.collection("Users").findOne({ _id: userId }))
+      ),
   },
 };
 
