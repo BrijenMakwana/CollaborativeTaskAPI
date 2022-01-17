@@ -32,6 +32,8 @@ const typeDefs = gql`
   type Query {
     myProjects: [Project!]!
     getProject(_id: String!): Project
+
+    getUser(_id: String!): User!
   }
 
   type Mutation {
@@ -118,6 +120,14 @@ const resolvers = {
       }
 
       return await db.collection("Projects").findOne({ _id: ObjectId(_id) });
+    },
+
+    getUser: async (_, { _id }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      return await db.collection("Users").findOne({ _id: ObjectId(_id) });
     },
   },
   Mutation: {
