@@ -42,7 +42,7 @@ const typeDefs = gql`
     updateProject(_id: String!, title: String!): Project!
     deleteProject(_id: String!): Boolean!
 
-    addUserToProject(projectId: String!, userId: String!): Project!
+    addUserToProject(projectId: String!, userEmail: String!): Project!
 
     createTaskList(content: String!, projectId: String!): TaskList!
     updateTaskList(
@@ -174,7 +174,7 @@ const resolvers = {
         title,
         createdAt: new Date().toISOString(),
         userIds: [user._id],
-        progress,
+        progress: 0,
       };
 
       const result = await db.collection("Projects").insertOne(newProject);
@@ -208,16 +208,24 @@ const resolvers = {
       return true;
     },
 
-    addUserToProject: async (_, { projectId, userId }, { db, user }) => {
+    addUserToProject: async (_, { projectId, userEmail }, { db, user }) => {
       if (!user) {
         throw new Error("Authentication error, please sign in");
+      }
+
+      const addedUser = await db
+        .collection("Users")
+        .findOne({ email: userEmail });
+
+      if (!addedUser) {
+        throw new Error("user doesn't exist");
       }
 
       await db.collection("Projects").updateOne(
         { _id: ObjectId(projectId) },
         {
           $push: {
-            userIds: ObjectId(userId),
+            userIds: addedUser._id,
           },
         }
       );
