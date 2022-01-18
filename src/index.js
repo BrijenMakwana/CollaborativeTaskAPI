@@ -45,6 +45,7 @@ const typeDefs = gql`
     deleteProject(_id: String!): Boolean!
 
     addUserToProject(projectId: String!, userEmail: String!): Project!
+    deleteUserFromProject(projectId: String!, userId: String!): Boolean!
 
     createTaskList(content: String!, projectId: String!): TaskList!
     updateTaskList(
@@ -243,6 +244,22 @@ const resolvers = {
       return await db
         .collection("Projects")
         .findOne({ _id: ObjectId(projectId) });
+    },
+
+    deleteUserFromProject: async (_, { projectId, userId }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("Projects").updateOne(
+        { _id: ObjectId(projectId) },
+        {
+          $pull: {
+            userIds: ObjectId(userId),
+          },
+        }
+      );
+      return true;
     },
 
     createTaskList: async (_, { content, projectId }, { db, user }) => {
