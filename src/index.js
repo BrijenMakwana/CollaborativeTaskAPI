@@ -251,6 +251,14 @@ const resolvers = {
         throw new Error("Authentication error, please sign in");
       }
 
+      const userEmail = await db
+        .collection("Users")
+        .findOne({ _id: ObjectId(userId) });
+
+      if (userEmail.email === user.email) {
+        throw new Error("You can not delete yourself from your own project!");
+      }
+
       await db.collection("Projects").updateOne(
         { _id: ObjectId(projectId) },
         {
