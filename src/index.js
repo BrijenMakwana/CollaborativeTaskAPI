@@ -34,15 +34,26 @@ const typeDefs = gql`
     getProject(_id: String!): Project
 
     getUser(_id: String!): User!
+    getLoggedInUserDetails: User!
   }
 
   type Mutation {
     signUp(input: SignUpInput!): AuthUser!
     signIn(input: SignInInput!): AuthUser!
 
+    changePassword(newPassword: String!): Boolean!
+    forgetUserPassword(
+      userEmail: String!
+      oldPassword: String!
+      newPassword: String!
+    ): Boolean!
+
+    updateAvatar(newAvatar: String!): Boolean!
+
     createProject(title: String!): Project!
     updateProject(_id: String!, title: String!): Project!
     deleteProject(_id: String!): Boolean!
+    deleteAllProjects: Boolean!
 
     addUserToProject(projectId: String!, userEmail: String!): Project!
     deleteUserFromProject(projectId: String!, userId: String!): Boolean!
@@ -54,6 +65,7 @@ const typeDefs = gql`
       isCompleted: Boolean
     ): TaskList!
     deleteTaskList(_id: String!): Boolean!
+    deleteAllTasks(projectId: String!): Boolean!
   }
 
   input SignUpInput {
@@ -130,6 +142,14 @@ const resolvers = {
 
       return await db.collection("Users").findOne({ _id: ObjectId(_id) });
     },
+
+    getLoggedInUserDetails: async (_, __, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      return await db.collection("Users").findOne({ _id: user._id });
+    },
   },
   Mutation: {
     signUp: async (_, { input }, { db }) => {
@@ -176,6 +196,71 @@ const resolvers = {
       };
     },
 
+    changePassword: async (_, { newPassword }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+      const hashedPassword = bcrypt.hashSync(newPassword);
+      await db.collection("Users").updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            password: hashedPassword,
+          },
+        }
+      );
+
+      return true;
+    },
+
+    forgetUserPassword: async (
+      _,
+      { userEmail, oldPassword, newPassword },
+      { db }
+    ) => {
+      const user = await db.collection("Users").findOne({ email: userEmail });
+
+      if (!user) {
+        throw new Error("User doesn't exist!");
+      }
+
+      const isPasswordCorrect = bcrypt.compareSync(oldPassword, user.password);
+
+      if (!isPasswordCorrect) {
+        throw new Error("Password not correct");
+      }
+
+      const newHashedPassword = bcrypt.hashSync(newPassword);
+
+      await db.collection("Users").updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            password: newHashedPassword,
+          },
+        }
+      );
+
+      return true;
+    },
+
+    updateAvatar: async (_, { newAvatar }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("Users").updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            avatar: newAvatar,
+          },
+        }
+      );
+
+      return true;
+    },
+
     createProject: async (_, { title }, { db, user }) => {
       if (!user) {
         throw new Error("Authentication error, please sign in");
@@ -216,6 +301,15 @@ const resolvers = {
       }
 
       await db.collection("Projects").deleteOne({ _id: ObjectId(_id) });
+      return true;
+    },
+
+    deleteAllProjects: async (_, __, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db.collection("Projects").deleteMany({ userIds: user._id });
       return true;
     },
 
@@ -312,6 +406,17 @@ const resolvers = {
       await db.collection("TaskLists").deleteOne({ _id: ObjectId(_id) });
       return true;
     },
+
+    deleteAllTasks: async (_, { projectId }, { db, user }) => {
+      if (!user) {
+        throw new Error("Authentication error, please sign in");
+      }
+
+      await db
+        .collection("TaskLists")
+        .deleteMany({ projectId: ObjectId(projectId) });
+      return true;
+    },
   },
 
   Project: {
@@ -373,8 +478,8 @@ const start = async () => {
       },
     });
 
-    // The `listen` method launches a web server.
-    server.listen({ port: process.env.PORT || 4000 }).then(({ url }) => {
+    // The `listen` method launches a web server. port: process.env.PORT ||
+    server.listen({ port: 4000 }).then(({ url }) => {
       console.log(`🚀  Server ready at ${url}`);
     });
   } finally {
